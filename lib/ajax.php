@@ -23,7 +23,6 @@ require_once(dirname(__FILE__).'/config.php');
 require_once(dirname(__FILE__).'/utils.php');
 require_once(dirname(__FILE__).'/vboxconnector.php');
 
-
 // Init session
 global $_SESSION;
 session_init();
