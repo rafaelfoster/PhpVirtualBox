@@ -395,13 +395,30 @@ var vboxVMDetailsSections = {
 	 */
 	preview : {
 		icon:'fullscreen_16px.png',
+		_resolutionCache : {},
 		title:trans('Preview'),
 		settingsLink: 'Display',
 		rerenderOnStateChange: true,
 		multiSelectDetailsTable: true,
 		noSnapshot: true,
 		noFooter: true,
+		_updateInterval : undefined,
 		condition: function() {
+			
+			// Update our default updateInterval here
+			if(vboxVMDetailsSections.preview._updateInterval === undefined) {
+				// Try local data first
+				var updateInterval = vboxGetLocalDataItem('previewUpdateInterval');
+				if(updateInterval === null || updateInterval === undefined) {
+					updateInterval = $('#vboxPane').data('vboxConfig').previewUpdateInterval;
+					if(updateInterval === null || updateInterval === undefined) {
+						updateInterval = 3;
+					}
+					vboxSetLocalDataItem('previewUpdateInterval', parseInt(updateInterval));
+				}
+				vboxVMDetailsSections.preview._updateInterval = parseInt(updateInterval);
+			}
+			
 			return !($('#vboxPane').data('vboxConfig').noPreview);
 		},
 
@@ -414,14 +431,6 @@ var vboxVMDetailsSections = {
 			
 			var menu = $('#vboxDetailsPreviewMenu');
 			if(menu[0]) return menu;
-			
-			// Set defaults
-			if($('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] === undefined) {
-				if($('#vboxPane').data('vboxConfig').previewUpdateInterval)
-					$('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] = $('#vboxPane').data('vboxConfig').previewUpdateInterval;
-				else
-					$('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] = 3;
-			}
 			
 
 			/* Menu List */
@@ -454,8 +463,8 @@ var vboxVMDetailsSections = {
 
 						$('<input />')
 							.attr({'class':'vboxRadio','type':'radio','name':'vboxPreviewRadio','value':0})
-							.click(function(){vboxSetCookie("vboxPreviewUpdate","0");})
-							.prop('checked', $('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] == 0)
+							.click(function(){vboxSetLocalDataItem('previewUpdateInterval','0');})
+							.prop('checked', parseInt(vboxGetLocalDataItem('previewUpdateInterval')) == 0)
 						
 					).append(
 							
@@ -470,11 +479,8 @@ var vboxVMDetailsSections = {
 			var ints = [3,5,10,20,30,60];
 			
 			// check for update interval
-			if($('#vboxPane').data('vboxConfig').previewUpdateInterval && jQuery.inArray($('#vboxPane').data('vboxConfig').previewUpdateInterval, ints) < 0) {
-				ints[ints.length] = $('#vboxPane').data('vboxConfig').previewUpdateInterval;
-			}
-			if($('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] && $('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] > 0 && jQuery.inArray(parseInt($('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"]), ints) < 0) {
-				ints[ints.length] = $('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"];
+			if(jQuery.inArray(vboxVMDetailsSections.preview._updateInterval, ints) < 0) {
+				ints[ints.length] = vboxVMDetailsSections.preview._updateInterval;
 			}
 			ints.sort(function(a,b){
 				if(a == b) return 0;
@@ -489,8 +495,8 @@ var vboxVMDetailsSections = {
 				if(i==0) $(li).attr('class','separator');
 
 				var radio = $('<input />').attr({'class':'vboxRadio','type':'radio','name':'vboxPreviewRadio','value':ints[i]}).click(function(){
-					vboxSetCookie("vboxPreviewUpdate",$(this).val());		
-				}).prop('checked', $('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] == ints[i]);
+					vboxSetLocalDataItem('previewUpdateInterval',$(this).val());		
+				}).prop('checked', vboxVMDetailsSections.preview._updateInterval == ints[i]);
 				
 				$('<label />')
 					.append(radio)
@@ -541,7 +547,7 @@ var vboxVMDetailsSections = {
 		
 			
 		onRender : function(d) {
-
+			
 			if(!vboxVMStates.isRunning(d) && !vboxVMStates.isSaved(d)) {
 				var timer = $('#vboxPane').data('vboxPreviewTimer-'+d.id);
 				if(timer) {
@@ -561,15 +567,15 @@ var vboxVMDetailsSections = {
 				
 				$('#vboxPane').data('vboxPreviewTimer-'+d.id,
 					window.setInterval('vboxVMDetailsSections.preview._drawPreview("'+d.id+'","'+d.state+'",'+d.lastStateChange+')',
-						$('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] * 1000));
+							vboxVMDetailsSections.preview._updateInterval * 1000));
 
 			}
 		},
 		
-		_drawPreview: function(vmid, vmstate, lastStateChange) {
+		_drawPreview: function(vmid, vmstate, lastStateChange,skipexistcheck) {
 			
 			// Does the target still exist?
-			if(!$('#vboxDetailsGeneralTable-'+vmid)[0]) {
+			if(!skipexistcheck && !$('#vboxDetailsGeneralTable-'+vmid)[0]) {
 				var timer = $('#vboxPane').data('vboxPreviewTimer-'+vmid);
 				if(timer) window.clearInterval(timer);
 				$('#vboxPane').data('vboxPreviewTimer-'+vmid, null);
@@ -583,7 +589,15 @@ var vboxVMDetailsSections = {
 
 				var height = 0;
 				var baseStr = 'vboxDetailsGeneralTable-'+vmid;
-				
+
+				// Does the target still exist?
+				if(!skipexistcheck && !$('#vboxDetailsGeneralTable-'+vmid)[0]) {
+					var timer = $('#vboxPane').data('vboxPreviewTimer-'+vmid);
+					if(timer) window.clearInterval(timer);
+					$('#vboxPane').data('vboxPreviewTimer-'+vmid, null);
+					return;
+				}
+
 				// Error or machine not running
 				if(this.height <= 1) {
 
@@ -591,7 +605,7 @@ var vboxVMDetailsSections = {
 					$('#'+baseStr+' div.vboxDetailsPreviewVMName').css('display','');
 					
 					width = $('#vboxPane').data('vboxConfig')['previewWidth'];
-					height = width / $('#vboxPane').data('vboxConfig')['previewAspectRatio'];
+					height = parseInt(width / $('#vboxPane').data('vboxConfig')['previewAspectRatio']);
 					
 					// Clear interval if set
 					var timer = $('#vboxPane').data('vboxPreviewTimer-'+vmid);
@@ -605,7 +619,14 @@ var vboxVMDetailsSections = {
 					width = $('#vboxPane').data('vboxConfig')['previewWidth'];
 					factor = width / this.width;
 					if(!factor) factor = 1;
-					height = this.height * factor;
+					height = parseInt(this.height * factor);
+
+					// Set cached resolution
+					vboxVMDetailsSections.preview._resolutionCache[vmid] = {
+						'width' : width,
+						'height' : height
+					};
+									
 					
 					$('#'+baseStr+' div.vboxDetailsPreviewVMName').css('display','none');
 					$('#'+baseStr+' img.vboxDetailsPreviewImg').css({'display':'','height':height+'px','width':width+'px'});
@@ -644,13 +665,17 @@ var vboxVMDetailsSections = {
 					}
 					
 				}
+
+				// Resize name?
+				$('#vboxDetailsGeneralTable-'+vmid+ ' div.vboxDetailsPreviewVMName span.textFill').textFill({maxFontPixels:20,'height':(height),'width':(width)});
+
 				$('#'+baseStr+' div.vboxDetailsPreviewWrap').css({'height':height+'px','width':width+'px'});
 				$('#'+baseStr+' img.vboxPreviewMonitor').css('width',width+'px');
 				$('#'+baseStr+' img.vboxPreviewMonitorSide').css('height',height+'px');
 			};
 
 			// Update disabled? State not Running or Saved
-			if($('#vboxPane').data('vboxCookies')["vboxPreviewUpdate"] == 0 || (!vboxVMStates.isRunning({'state':vmstate}) && !vboxVMStates.isSaved({'state':vmstate}))) {
+			if(!vboxVMDetailsSections.preview._updateInterval || (!vboxVMStates.isRunning({'state':vmstate}) && !vboxVMStates.isSaved({'state':vmstate}))) {
 				__vboxDrawPreviewImg.height = 0;
 				__vboxDrawPreviewImg.onload();
 			} else {
@@ -673,14 +698,21 @@ var vboxVMDetailsSections = {
 
 			var width = $('#vboxPane').data('vboxConfig')['previewWidth'];
 			if(!width) width = $('#vboxPane').data('vboxConfig')['previewWidth'] = 180;
+			width = parseInt(width);
+			var height = parseInt(width / $('#vboxPane').data('vboxConfig')['previewAspectRatio']);
 
-			var height = (width / $('#vboxPane').data('vboxConfig')['previewAspectRatio']);
+			// Check for cached resolution
+			if(vboxVMDetailsSections.preview._resolutionCache[d.id]) {
+				width = vboxVMDetailsSections.preview._resolutionCache[d.id].width;
+				height = vboxVMDetailsSections.preview._resolutionCache[d.id].height;
+			}
 
-			var divOut1 = "<div class='vboxDetailsPreviewVMName' style='overflow:hidden;position:relative;height:"+height+"px;width:"+width+"px' >" +
-				"<div style='position:relative;left:0px;display:table-cell;vertical-align:middle;padding:4px;color:#fff;font-weight:bold;text-align:center;height:"+height+"px;width:"+width+"px;" +
+			var divOut1 = "<div class='vboxDetailsPreviewVMName' style='position:absolute;overflow:hidden;padding:0px;height:"+height+"px;width:"+width+"px;"+
+				"display:"+(vboxVMStates.isRunning(d) || vboxVMStates.isSaved(d) ? 'none' : '')+"' >" +
+				"<div style='position:relative;display:table-cell;padding:0px;vertical-align:middle;color:#fff;font-weight:bold;overflow:hidden;text-align:center;height:"+height+"px;width:"+width+"px;" +
 				($.browser.msie ? "filter:progid:DXImageTransform.Microsoft.AlphaImageLoader(enabled=\"true\", src=\"images/monitor_glossy.png\", sizingMethod=\"scale\")" : "" +
 					"background:url(images/monitor_glossy.png) top left no-repeat;-moz-background-size:100% 100%;background-size:"+(width+1) +"px " + (height+1)+"px;-webkit-background-size:100% 100%") +
-				"'>"+$('<div />').html(d.name).text()+"</div>"+
+				"'><span class='textFill' style='font-size: 12px;position:relative;display:inline-block;'>"+$('<div />').html(d.name).text()+"</span></div>"+
 				"</div>";
 
 			return [
@@ -688,27 +720,27 @@ var vboxVMDetailsSections = {
 			        	data : "<tr style='vertical-align: middle'>"+
 							"<td style='text-align: center' colspan='2'>"+
 								"<table class='vboxInvisible vboxPreviewTable' style='margin-left:auto;margin-right:auto;'>"+
-									"<tr style='vertical-align:bottom; padding:0px; margin:0px;'>"+
-										"<td class='vboxInvisible' style='text-align:right'><img src='images/monitor_tl.png' style='width:15px;height:17px;'/></td>"+
+									"<tr style='vertical-align:bottom; padding:0px; margin:0px;height:17px'>"+
+										"<td class='vboxInvisible' style='text-align:right;width:15px;height:17px'><img src='images/monitor_tl.png' style='width:15px;height:17px;'/></td>"+
 										"<td class='vboxInvisible'><img src='images/monitor_top.png' class='vboxPreviewMonitor' style='height:17px;width:"+width+"px'/></td>"+
-										"<td class='vboxInvisible' style='text-align:left'><img src='images/monitor_tr.png' style='width:15px;height:17px;'/></td>"+
+										"<td class='vboxInvisible' style='text-align:left;width:15px;height:17px'><img src='images/monitor_tr.png' style='width:15px;height:17px;'/></td>"+
 									"</tr>"+
 									"<tr style='vertical-align:top;'>"+
-										"<td class='vboxInvisible' style='text-align:right'><img src='images/monitor_left.png' style='width:15px;height:"+height+"px' class='vboxPreviewMonitorSide' /></td>"+
-										"<td class='vboxInvisible'><div class='vboxDetailsPreviewWrap "+ (vboxVMStates.isSaved(d) ? 'vboxPreviewSaved' : '') +"' style='width: "+width+"px; height:"+height+"px; text-align:center;background-color:#000;border:0px;display:table;#position:relative;background-repeat: no-repeat;padding:0px;margin:0px;'>"+
+										"<td class='vboxInvisible' style='text-align:right;'><img src='images/monitor_left.png' style='width:15px;height:"+height+"px' class='vboxPreviewMonitorSide' /></td>"+
+										"<td class='vboxInvisible' style='position:relative;'><div class='vboxDetailsPreviewWrap "+ (vboxVMStates.isSaved(d) ? 'vboxPreviewSaved' : '') +"' style='width: "+width+"px; height:"+height+"px; position:relative;overflow:hidden;text-align:center;background-color:#000;border:0px;display:table;#position:relative;background-repeat:no-repeat;padding:0px;margin:0px;'>"+
 											"<img class='vboxDetailsPreviewImg' src='images/monitor_glossy.png' vspace='0px' hspace='0px' "+
-											"style='display:none;top:0px;margin:0px;border:0px;padding;0px;"+
+											"style='display:"+(vboxVMStates.isRunning(d) || vboxVMStates.isSaved(d) ? '' : 'none')+";top:0px;margin:0px;border:0px;padding;0px;"+
 											"background-position:top left;background-repeat:no-repeat;"+
 											"-moz-background-size:100% 100%;background-size:100% 100%;-webkit-background-size:100% 100%;background-spacing:0px 0px;"+
-											"position:relative;height:"+height+"px;width:"+width+"px;float:left' />"+
+											"height:"+height+"px;width:"+width+"px;' />"+
 											divOut1+
 										"</div></td>"+
-										"<td class='vboxInvisible' style='text-align:left' ><img src='images/monitor_right.png' style='width:14px;height:"+height+"px' class='vboxPreviewMonitorSide' /></td>"+
+										"<td class='vboxInvisible' style='text-align:left;' ><img src='images/monitor_right.png' style='width:14px;height:"+height+"px' class='vboxPreviewMonitorSide' /></td>"+
 									"</tr>"+
-									"<tr style='vertical-align:top;'>"+
-										"<td class='vboxInvisible' style='text-align:right'><img src='images/monitor_bl.png' style='width:15px;height:17px;'/></td>"+
-										"<td class='vboxInvisible'><img src='images/monitor_bottom.png' class='vboxPreviewMonitor' style='height:17px;width:"+width+"px'/></td>"+
-										"<td class='vboxInvisible' style='text-align:left'><img src='images/monitor_br.png' style='width:15px;height:17px;'/></td>"+
+									"<tr style='vertical-align:top;height:17px'>"+
+										"<td class='vboxInvisible' style='text-align:right;width:15px;height:17px'><img src='images/monitor_bl.png' style='width:15px;height:17px;float:right;'/></td>"+
+										"<td class='vboxInvisible' style='vertical-align:top'><img src='images/monitor_bottom.png' class='vboxPreviewMonitor' style='height:17px;width:"+width+"px'/></td>"+
+										"<td class='vboxInvisible' style='text-align:left;width:15px;height:17px'><img src='images/monitor_br.png' style='width:15px;height:17px;'/></td>"+
 									"</tr>"+
 								"</table>"+													
 							"</td>"+
@@ -1166,6 +1198,7 @@ var vboxVMGroupActions = {
 			if(!$('#vboxPane').data('vboxSession').admin) return false;
 			var gElm = vboxChooser.getSelectedGroupElements()[0];
 			if(!gElm) return false;
+			if($('#vboxPane').data('vboxConfig')['phpVboxGroups']) return true;
 			if($(gElm).find('td.vboxVMSessionOpen')[0]) return false;
 			return true;
 		},
@@ -1181,6 +1214,7 @@ var vboxVMGroupActions = {
 			if(!$('#vboxPane').data('vboxSession').admin) return false;
 			var gElm = vboxChooser.getSelectedGroupElements()[0];
 			if(!gElm) return false;
+			if($('#vboxPane').data('vboxConfig')['phpVboxGroups']) return true;
 			if($(gElm).find('td.vboxVMSessionOpen')[0]) return false;
 			return true;
 		},
@@ -1376,9 +1410,7 @@ var vboxVMActions = {
 			});
 			
     	},
-		enabled: function(){
-			return (vboxChooser && vboxChooser.selectionMode == vboxSelectionModeSingleVM && vboxChooser.getSingleSelectedId() != 'host');
-		}
+    	enabled: function () {return(vboxChooser.selectedVMs.length ==1);}
     },
     
     /** Delete / Remove a VM */
@@ -2043,7 +2075,7 @@ function vboxWizard(name, title, bg, icon) {
 	self.run = function() {
 
 		// Set mode
-		self.mode = $('#vboxPane').data('vboxCookies')['vboxWizardMode'+self.name];
+		self.mode = (vboxGetLocalDataItem('vboxWizardMode'+self.name) == 'a' ? 'advanced' : '');
 		
 		var d = $('<div />').attr({'id':self.name+'Dialog','style':'display: none','class':'vboxWizard'});
 		
@@ -2200,8 +2232,7 @@ function vboxWizard(name, title, bg, icon) {
 							vl.run();
 						}
 
-						
-						vboxSetCookie('vboxWizardMode'+self.name, self.mode);
+						vboxSetLocalDataItem('vboxWizardMode'+self.name, (self.mode == 'advanced' ? 'a' : ''));
 						
 					
 				},
@@ -3720,14 +3751,14 @@ function vboxLoader() {
 		}
 		
 		// Data first
-		$.when.apply($, self._data).then(function() {
+		$.when.apply(null, self._data).then(function() {
 			
 			// files
 			for(var i = 0; i < self._files.length; i++) {
 				self._files[i] = jQuery.get(self._files[i]['file'],self._files[i]['callback']);
 			}
 			
-			$.when.apply($, self._files).then(function() {
+			$.when.apply(null, self._files).then(function() {
 				self._stop();
 			});
 				
@@ -3742,7 +3773,7 @@ function vboxLoader() {
 	 */
 	self._stop = function() {
 
-		if(self.onLoad) self.onLoad();
+		if(self.onLoad) self.onLoad(self);
 
 		if(!self.noLoadingScreen) self.removeLoading();
 		

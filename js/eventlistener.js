@@ -58,6 +58,12 @@ var vboxEventListener = {
 			// Don't do anything if this is not running
 			if(!vboxEventListener._running || !vboxEventListener._started) return;
 			
+			// Check for valid result
+			if(!d.result) {
+				vboxAlert(trans('There was an error obtaining the list of registered virtual machines from VirtualBox. Make sure vboxwebsrv is running and that the settings in config.php are correct.<p>The list of virtual machines will not begin auto-refreshing again until this page is reloaded.</p>','phpVirtualBox'));
+				return;
+			}
+			
 			// Resolve started object?
 			if(vboxEventListener._started.state() != 'resolved') {
 				vboxEventListener._started.resolve({});
@@ -70,15 +76,13 @@ var vboxEventListener = {
 			// Loop through each event recording or
 			// triggering changes
 			if(d && d.events) {
-				
+								
 				var eventList = [];
 				
 				var vmChanges = {};
 				
 				for(var i = 0; i < d.events.length; i++) {
 
-					//console.log(d.events[i]);
-					
 					switch(d.events[i].eventType) {
 					
 						// machine state change
@@ -88,6 +92,7 @@ var vboxEventListener = {
 								vmChanges[d.events[i].machineId] = {};
 
 							vmChanges[d.events[i].machineId]['state'] = d.events[i].state;
+							vmChanges[d.events[i].machineId]['lastStateChange'] = d.events[i].enrichmentData.lastStateChange;
 							break;
 						
 						// machine session state change
@@ -216,8 +221,16 @@ var vboxEventListener = {
 						
 						if(typeof(a) != 'string') continue;
 						
-						if(a == 'state' || a == 'sessionState') {
-							eventList[eventList.length] = [(a == 'state' ? 'Machine' : 'Session') + 'StateChanged', [i, vmChanges[i][a]]];
+						// Machine state
+						if(a == 'state') {
+							
+							eventList[eventList.length] = ['MachineStateChanged', [i, vmChanges[i][a], vmChanges[i]['lastStateChange']]];
+							sessionOrStateTriggers[i] = i;			
+						
+						// Session state
+						} else if(a == 'sessionState') {
+							
+							eventList[eventList.length] = ['SessionStateChanged', [i, vmChanges[i][a]]];
 							sessionOrStateTriggers[i] = i;
 						}
 					}
@@ -240,9 +253,6 @@ var vboxEventListener = {
 				}
 			
 			// </ check for d and d.events >
-			} else {
-				vboxAlert(trans('There was an error obtaining the list of registered virtual machines from VirtualBox. Make sure vboxwebsrv is running and that the settings in config.php are correct.<p>The list of virtual machines will not begin auto-refreshing again until this page is reloaded.</p>','phpVirtualBox'));
-				return;
 			}
 			
 			// Wait at most 3 seconds

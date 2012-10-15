@@ -14,7 +14,7 @@
 /*
  * This version of phpVirtualBox
  */
-define('PHPVBOX_VER', '4.2-1');
+define('PHPVBOX_VER', '4.2-3');
 
 class phpVBoxConfigClass {
 
@@ -26,6 +26,12 @@ class phpVBoxConfigClass {
 	 */
 	var $language = 'en';
 
+	/**
+	 * Exclusively use phpVirtualBox groups rather than
+	 * VirtualBox groups
+	 */
+	var $phpVboxGroups = false;
+	
 	/**
 	 * Preview screen width
 	 * @var integer

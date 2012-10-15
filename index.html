@@ -33,7 +33,8 @@
     <script type="text/javascript" src="js/jquery-ui-1.8.23-min.js"></script>
     <script type="text/javascript" src="js/jquery.contextMenu.js"></script>
 	<script type="text/javascript" src="js/jquery.tipped-2.1b.min.js"></script>
-	<script type="text/javascript" src="js/jqueryFileTree.js"></script>	
+	<script type="text/javascript" src="js/jqueryFileTree.js"></script>
+	<script type="text/javascript" src="js/jquery.textFill.js"></script>		
 	<script type="text/javascript" src="js/jquery.scrollTo-min.js"></script>
 	<script type="text/javascript" src="js/jquery.jec-1.3.1.js"></script>
 	
@@ -51,6 +52,7 @@
     <script type="text/javascript" src="js/chooser.js"></script>
     <script type="text/javascript" src="js/datamediator.js"></script>
 	<script type="text/javascript" src="js/dialogs.js"></script>
+	<script type="text/javascript" src="js/canvasimages.js"></script>
 	<script type="text/javascript" src="js/phptest.php"></script>
 
 
@@ -59,6 +61,10 @@
 	
 		$(document).ready(function(){
 
+			/*
+			 * Parse cookies
+			 */
+			 vboxParseCookies();
 			
 			/*
 			 *
@@ -136,8 +142,7 @@
 			$('#vboxResizeBar').draggable({cursor:(jQuery.browser.opera ? 'e-resize' : 'col-resize'),axis:'x',zIndex:99,helper:function(){
 				
 				$('#vboxResizeBarTmp').remove();
-				var r = $('#vboxResizeBar').clone(false);
-				return $(r).attr({'id':'vboxResizeBarTmp'}).unbind('mouseleave').css({'background':'#cccccc'});
+				return $('#vboxResizeBar').clone(false).attr({'id':'vboxResizeBarTmp'}).unbind('mouseleave').css({'background':'#cccccc'});
 				
 			},scroll:false,'start':function(e,ui){
 				
@@ -156,9 +161,11 @@
 				var nx = $('#vboxChooserDiv').width() + (e.pageX - $('#vboxResizeBar').data('vboxX'));
 				$('#vboxChooserDiv').css('width',(nx)+'px');
 				
-				vboxSetCookie("vboxPaneX",($('#vboxChooserDiv').width()));
+				vboxSetLocalDataItem("vboxPaneX",($('#vboxChooserDiv').width()));
 				
-				$('#vboxPaneVMList').css('width',$('#vboxChooserDiv').css('width'));
+				$('#vboxChooserPane').css('width',$('#vboxChooserDiv').css('width'));
+				
+				$(window).trigger('resize');
 				
 			}}).css('cursor',(jQuery.browser.opera ? 'e-resize' : 'col-resize')).bind('mouseenter',function(){
 				$(this).css('background',"#cccccc");
@@ -192,7 +199,7 @@
 				var nx = $('#vboxProgressOps').height() + ($('#vboxResizeBarProgress').data('vboxY') - e.pageY);
 				$('#vboxProgressOps').css({'height':(nx)+'px','overflow':'auto'}).parent().css({'height':(nx)+'px'});
 				
-				vboxSetCookie("vboxPaneY",($('#vboxProgressOps').height()));
+				vboxSetLocalDataItem("vboxPaneY",($('#vboxProgressOps').height()));
 				
 				$(window).trigger('resize');
 				
@@ -211,11 +218,13 @@
 				$('#vboxChooserResizePane').children().children().css({'display':'none'});
 				
 				var h = $('#vboxResize').innerHeight();
-				$('#vboxChooserResizePane').children().children().css({'height':h+'px','overflow':'auto','display':''});
+				$('#vboxChooserResizePane').children().children().css({'height':h+'px','overflow-y':'auto','overflow-x':'hidden','display':''});
+				
 				// special for resize bar
 				$('#vboxResizeBar').css({'height':(h-10)+'px'});
+				
 				// special for bordered vm list
-				$('#vboxPaneVMList').children().css({'height':(h-4)+'px'});
+				$('#vboxChooserPane').children().css({'height':(h-4)+'px'});
 
 			});
 			
@@ -262,7 +271,7 @@
 				l.add('vboxGetEnumerationMap',function(d){$('#vboxPane').data('vboxMediumVariants',d);},{'class':'MediumVariant','ValueMap':1});
 	
 				// Load HTML panes and append them to their respective locations
-				l.addFileToDOM('panes/vmlist.html',$('#vboxPaneVMList'));
+				l.addFileToDOM('panes/vmlist.html',$('#vboxChooserPane'));
 				l.addFileToDOM('panes/topmenu.html');
 				l.addFileToDOM('panes/vmlistToolbar.html');
 				l.addFileToDOM('panes/tabs.html',$('#vboxPaneTabContent'));
@@ -271,12 +280,11 @@
 	
 					
 					// Resize to last setting
-					vboxParseCookies();
-					if($('#vboxPane').data('vboxCookies')['vboxPaneX']) {
-						$('#vboxChooserDiv').css('width',($('#vboxPane').data('vboxCookies')['vboxPaneX'])+'px');
+					if(vboxGetLocalDataItem('vboxPaneX')) {
+						$('#vboxChooserDiv').css('width',(vboxGetLocalDataItem('vboxPaneX'))+'px');
 					}
-					if($('#vboxPane').data('vboxCookies')['vboxPaneY']) {
-						var nx = $('#vboxPane').data('vboxCookies')['vboxPaneY'];
+					if(vboxGetLocalDataItem('vboxPaneY')) {
+						var nx = vboxGetLocalDataItem('vboxPaneY');
 						$('#vboxProgressOps').css({'height':(nx)+'px'}).parent().css({'height':(nx)+'px'});
 					}
 					
@@ -297,7 +305,7 @@
 			 * Check for valid session and display login box if one does not exist
 			 * @param {Boolean} tried - set to true if login was attempted before this call
 			 */
-			function vboxCheckSession(tried) {
+			var vboxCheckSession = function(tried) {
 				
 				// check session info
 				if($('#vboxPane').data('vboxSession') && $('#vboxPane').data('vboxSession').valid) {
@@ -328,7 +336,7 @@
 			var login = new vboxLoader();
 			login.add('getSession',function(d){$('#vboxPane').data('vboxSession',d);});
 			login.addFileToDOM('panes/login.html');
-			login.onLoad = function() {
+			login.onLoad = function(loader) {
 
 				var buttons = {};
 				buttons[trans('Log in','UIUsers')] = function() {
@@ -353,7 +361,8 @@
 				$('#vboxLogin').find('input[name=username]').first().focus();
 				
 				// Trick loader into not showing root pane again
-				this.hideRoot = false;
+				loader.hideRoot = false;
+				
 				
 				// Login form is loaded, run check for valid session
 				vboxCheckSession();
@@ -402,7 +411,7 @@
 		<td style='border:0px;padding:0px;margin:0px;border-spacing:0px;' id='vboxResize'>
 			<table style='width:100%;border:0px;padding:0px;border-spacing:0px;'>
 				<tr id='vboxChooserResizePane' style='vertical-align: top;'>
-					<td id="vboxPaneVMList" style='padding:0px;border-spacing:0px;margin:0px'>
+					<td id="vboxChooserPane" style='padding:0px;border-spacing:0px;margin:0px'>
 						<!--
 						
 						VM List
@@ -410,7 +419,7 @@
 						-->
 					</td>
 					<td id='vboxResizeTD' style='border: 0px; width: 2px; margin: 0px; padding: 0px; text-align: center;'>
-						<div style='z-index: 99; position: absolute; margin:0px; margin-top: 2px; padding:2px; width: 0px; height: 90%;' id='vboxResizeBar' ></div>
+						<div style='position: absolute; margin: 0px; padding:2px; width: 0px; height: 90%;' id='vboxResizeBar' ></div>
 					</td>
 					<td id="vboxPaneTabContent" style='width:100%;border:0px;padding:0px;border-spacing:0px;margin:0px'>
 						<!--
@@ -426,9 +435,9 @@
 	<!--
 		Progress operation list resize bar
 	-->
-	<tr style='padding: 0px; margin: 0px'>
-		<td id='vboxResizeTDProgress' style='border: 0px; margin: 0px; padding: 0px; text-align: center; height: 5px'>
-			<div style='z-index: 99; position: absolute; width:99%; margin:0px; padding:2px;' id='vboxResizeBarProgress' ></div>
+	<tr style='padding: 0px; margin: 0px; vertical-align: middle;'>
+		<td id='vboxResizeTDProgress' style='border: 0px; margin: 0px; padding: 0px; text-align: center; height: 5px; vertical-align: middle'>
+			<div style='width:99%; margin:0 auto; padding:2px;' id='vboxResizeBarProgress' ></div>
 		</td>
 	</tr>
 	<tr style='vertical-align: top; padding: 0px;'>
