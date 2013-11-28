@@ -1,73 +1,81 @@
 <?php
 /*
- * $Id$
+ * $Id: LDAP.php 501 2013-07-11 17:44:37Z imooreyahoo@gmail.com $
  * Experimental!
  */
 
 
 class phpvbAuthLDAP implements phpvbAuth {
-	
+
 	var $capabilities = array(
 		'canChangePassword' => false,
 		'canLogout' => true
 	);
-	
+
 	var $config = array(
 		'host' => '127.0.0.1', // LDAP server ip
-		'bind_dn' => 'uid=%s, ou=admins, dc=internal, dc=local', // %s will be replaced with login username
-		'adminUser' => ''
+		'bind_dn' => 'ou=admins, dc=internal, dc=local', // %s will be replaced with login username
+		'adminUser' => '',
+		'user'   => '%s',
+		'filter' => '(objectClass=*)'
 	);
-	
+
 	function phpvbAuthLDAP($userConfig = null) {
 		if($userConfig) $this->config = array_merge($this->config,$userConfig);
 	}
-	
+
 	function login($username, $password)
 	{
 		global $_SESSION;
-		
+
 		// Check for LDAP functions
 		if(!function_exists('ldap_connect')) {
-			
+
 			$ex = 'LDAP support is not enabled in your PHP configuration.';
-			
+
 			if(strtolower(substr(PHP_OS, 0, 3)) == 'win') {
-				
+
 				ob_start();
 				phpinfo(INFO_GENERAL);
 				$phpinfo = ob_get_contents();
 				ob_end_clean();
 				preg_match('/Loaded Configuration File <\/td><td.*?>(.*?)\s*</', $phpinfo, $phpinfo);
-				
-				$ex .= ' You probably just need to uncomment the line ;extension=php_ldap.dll in php.ini'. 
+
+				$ex .= ' You probably just need to uncomment the line ;extension=php_ldap.dll in php.ini'.
 					(count($phpinfo) > 1 ? ' (' .trim($phpinfo[1]).')' : '') . ' by removing the ";" and restart your web server.';
-				
+
 			} else if(strtolower(substr(PHP_OS, 0, 5)) == 'Linux') {
-				
-				$ex .= ' You probably need to install the php5-ldap (or similar depending on your distribution) package.';	
-			
+
+				$ex .= ' You probably need to install the php5-ldap (or similar depending on your distribution) package.';
+
 			}
 			throw new Exception($ex);
 		}
 
 		$auth = ldap_connect($this->config['host']);
-		
+
 		if(!$auth) return false;
-		
+
+	        ldap_set_option($auth, LDAP_OPT_REFERRALS, 0);
 		ldap_set_option($auth,LDAP_OPT_PROTOCOL_VERSION, 3);
-		
-		if(!@ldap_bind($auth, sprintf($this->config['bind_dn'], $username), $password))
+
+		if (!ldap_bind($auth, sprintf($this->config['user'], $username), $password))
 			return false;
-		
-		
+
+		// Realiza o search do usuario dentro do filtro (grupo) configurado no $config
+		$userFilter = sprintf($this->config['filter'],$username);
+		$search  = ldap_search($auth, $this->config['bind_dn'], $userFilter,array('dn'));
+		$entries = ldap_get_entries($auth,$search);
+		if (!ldap_count_entries($auth,$search))
+			throw new Exception("This user doesn't have access to this resource.");
+
 		$_SESSION['valid'] = true;
 		$_SESSION['user'] = $username;
 		$_SESSION['admin'] = (!$this->config['adminUser']) || ($_SESSION['user'] == $this->config['adminUser']);
 		$_SESSION['authCheckHeartbeat'] = time();
-		
+
 	}
-	
-	
+
 	function heartbeat($vbox)
 	{
 		global $_SESSION;
@@ -75,11 +83,11 @@ class phpvbAuthLDAP implements phpvbAuth {
 		$_SESSION['valid'] = true;
 		$_SESSION['authCheckHeartbeat'] = time();
 	}
-	
+
 	function changePassword($old, $new)
 	{
 	}
-	
+
 	function logout(&$response)
 	{
 		global $_SESSION;
