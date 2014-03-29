@@ -1,7 +1,7 @@
 <?php
 /**
  * phpVirtualBox example configuration. 
- * @version $Id$
+ * @version $Id: config.php-example 452 2012-10-17 12:22:12Z imooreyahoo@gmail.com $
  *
  * rename to config.php and edit as needed.
  *
@@ -182,6 +182,17 @@ var $nicMax = 4;
 
 // Authentication library.
 var $authLib = 'Builtin';
+
+/*
+// Change to enable LDAP Filter
+var $authLib = 'LDAP';
+var $authConfig = array(
+	'host' => 'ldap://contoso.com',
+	'bind_dn' => 'DC=CONTOSO,DC=COM',
+	'user' => 'CONTOSO\%s',
+	'filter' => '(&(sAMAccountName=%s)(memberOf=CN=VBOX_GROUP,CN=Users,DC=CONTOSO,DC=COM))'
+);
+*/
 
 // VM ownership
 #var $enforceVMOwnership = true;
